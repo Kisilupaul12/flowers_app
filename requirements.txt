@@ -4,4 +4,4 @@ setuptools>=65.0.0
 wheel>=0.38.0
 gunicorn
 numpy
-
+tensorflow==2.13.0
