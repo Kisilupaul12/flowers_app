@@ -25,7 +25,8 @@ SECRET_KEY = 'django-insecure-2%d+m86&$v^@ozta6gp1v92-_lt$8qv11-a-wzrq45zwvpwqg9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS =
+['http://flowers-app-ucwv.onrender.com']
 
 
 # Application definition
