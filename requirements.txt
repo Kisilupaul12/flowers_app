@@ -3,3 +3,4 @@ Pillow==10.4.0
 setuptools>=65.0.0
 wheel>=0.38.0
 gunicorn
+numpy
