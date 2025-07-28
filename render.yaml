@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: flowers_app
+    name: django-flower-classifier
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn your_project_name.wsgi:application
+    startCommand: gunicorn flowes_app.wsgi:application
     envVars:
       - key: DJANGO_SETTINGS_MODULE
-        value: your_project_name.settings
+        value: Flowers_app.settings
