@@ -52,13 +52,59 @@ def load_model_in_background():
         
         print(f"Loading model from: {MODEL_PATH}")
         
-        # Load model without compilation (faster)
-        model = load_model(MODEL_PATH, compile=False)
-        print("Model loaded successfully!")
+        # Try multiple loading approaches for compatibility
+        loading_methods = [
+            # Method 1: Standard loading
+            lambda: load_model(MODEL_PATH),
+            # Method 2: Without compilation
+            lambda: load_model(MODEL_PATH, compile=False),
+            # Method 3: With custom objects (for compatibility)
+            lambda: load_model(MODEL_PATH, compile=False, safe_mode=False),
+        ]
+        
+        for i, method in enumerate(loading_methods, 1):
+            try:
+                print(f"Trying loading method {i}...")
+                model = method()
+                print(f"Model loaded successfully with method {i}!")
+                
+                # If loaded without compilation, compile it
+                if not hasattr(model, 'compiled_loss') or model.compiled_loss is None:
+                    try:
+                        model.compile(
+                            optimizer='adam',
+                            loss='sparse_categorical_crossentropy',
+                            metrics=['accuracy']
+                        )
+                        print("Model compiled successfully")
+                    except Exception as compile_error:
+                        print(f"Warning: Could not compile model: {compile_error}")
+                        # Model can still work for predictions without compilation
+                
+                break  # Successfully loaded
+                
+            except Exception as method_error:
+                print(f"Method {i} failed: {method_error}")
+                if i == len(loading_methods):
+                    # All methods failed
+                    raise method_error
+                continue
         
     except Exception as e:
-        print(f"Error loading model: {e}")
-        model_error = str(e)
+        error_msg = str(e)
+        print(f"Error loading model: {error_msg}")
+        
+        # Try to provide more helpful error message
+        if "Sequential" in error_msg:
+            model_error = "Model format compatibility issue. Try re-saving your model with current TensorFlow version."
+        elif "compile" in error_msg.lower():
+            model_error = "Model compilation issue. The model file may be corrupted or incompatible."
+        elif "not found" in error_msg.lower():
+            model_error = "Model file not found. Please check if the file exists and is accessible."
+        else:
+            model_error = f"Model loading failed: {error_msg}"
+            
+        print(f"Final error: {model_error}")
     finally:
         model_loading = False
 
