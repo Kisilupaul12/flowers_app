@@ -25,7 +25,7 @@ def load_model_safe():
         from tensorflow.keras.models import load_model
         
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Fixed __file__ typo
-        MODEL_PATH = os.path.join(BASE_DIR, 'flower_model.keras')
+        MODEL_PATH = os.path.join(BASE_DIR, 'flower_model(1).keras')
         
         # Check if model file exists
         if not os.path.exists(MODEL_PATH):
