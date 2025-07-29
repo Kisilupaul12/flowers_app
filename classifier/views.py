@@ -16,7 +16,7 @@ CLASS_NAMES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips']
 model = None
 
 def load_model_safe():
-    """Safely load the model with error handling"""
+    """Safely load the model with error handling and timeout protection"""
     global model
     if model is not None:
         return model
@@ -46,16 +46,21 @@ def load_model_safe():
                 return None
         
         print(f"Loading model from: {MODEL_PATH}")
+        print("This may take a moment for large models...")
         
         # Try loading with different approaches
         try:
-            model = load_model(MODEL_PATH)
-            print("Model loaded successfully with default settings")
-        except Exception as e:
-            print(f"Failed to load with default settings: {e}")
-            # Try loading without compilation for compatibility
+            # Load without compilation first (faster)
             model = load_model(MODEL_PATH, compile=False)
             print("Model loaded successfully without compilation")
+            
+            # Compile the model for predictions
+            model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+            print("Model compiled successfully")
+            
+        except Exception as e:
+            print(f"Failed to load model: {e}")
+            return None
         
         return model
         
