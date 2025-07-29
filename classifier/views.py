@@ -8,9 +8,59 @@ from django.conf import settings
 from PIL import Image
 from .forms import UploadImageForm
 import uuid
+import threading
+import time
 
 # Define the class names in the same order as used during model training
 CLASS_NAMES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips']
+
+# Global variables for model loading
+model = None
+model_loading = False
+model_error = None
+
+def load_model_in_background():
+    """Load model in background thread"""
+    global model, model_loading, model_error
+    
+    if model is not None or model_loading:
+        return
+    
+    model_loading = True
+    model_error = None
+    
+    try:
+        print("Starting background model loading...")
+        from tensorflow.keras.models import load_model
+        
+        # Find model path
+        MODEL_PATH = os.path.join(settings.BASE_DIR, 'classifier', 'flower_model (1).keras')
+        
+        if not os.path.exists(MODEL_PATH):
+            # Try alternative locations
+            fallback_locations = [
+                os.path.join(settings.BASE_DIR, 'flower_model (1).keras'),
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flower_model (1).keras'),
+            ]
+            
+            for fallback_path in fallback_locations:
+                if os.path.exists(fallback_path):
+                    MODEL_PATH = fallback_path
+                    break
+            else:
+                raise FileNotFoundError("Model file not found in any expected location")
+        
+        print(f"Loading model from: {MODEL_PATH}")
+        
+        # Load model without compilation (faster)
+        model = load_model(MODEL_PATH, compile=False)
+        print("Model loaded successfully!")
+        
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        model_error = str(e)
+    finally:
+        model_loading = False
 
 def save_uploaded_image(uploaded_file):
     """Save uploaded image and return the URL"""
@@ -31,10 +81,19 @@ def save_uploaded_image(uploaded_file):
         return None, None
 
 def predict_flower(request):
+    global model, model_loading, model_error
+    
     prediction = None
     error_message = None
     image_url = None
     confidence_score = None
+    is_loading = False
+    
+    # Start loading model in background if not already loaded/loading
+    if model is None and not model_loading and model_error is None:
+        thread = threading.Thread(target=load_model_in_background)
+        thread.daemon = True
+        thread.start()
     
     if request.method == 'POST':
         form = UploadImageForm(request.POST, request.FILES)
@@ -55,64 +114,52 @@ def predict_flower(request):
                     if image_url is None:
                         error_message = "Failed to save uploaded image."
                     else:
-                        # Try to load and use the model
-                        try:
-                            from tensorflow.keras.models import load_model
-                            
-                            # Find model path
-                            MODEL_PATH = os.path.join(settings.BASE_DIR, 'classifier', 'flower_model (1).keras')
-                            
-                            if not os.path.exists(MODEL_PATH):
-                                # Try alternative locations
-                                fallback_locations = [
-                                    os.path.join(settings.BASE_DIR, 'flower_model (1).keras'),
-                                    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flower_model (1).keras'),
-                                ]
+                        # Check model status
+                        if model_loading:
+                            error_message = "Model is still loading. Please wait a moment and try again."
+                            is_loading = True
+                        elif model_error:
+                            error_message = f"Model loading failed: {model_error}"
+                        elif model is None:
+                            error_message = "Model is not available. Please refresh the page and try again."
+                        else:
+                            try:
+                                # Reset file pointer for processing
+                                uploaded_file.seek(0)
                                 
-                                for fallback_path in fallback_locations:
-                                    if os.path.exists(fallback_path):
-                                        MODEL_PATH = fallback_path
-                                        break
-                                else:
-                                    raise FileNotFoundError("Model file not found")
-                            
-                            print(f"Loading model from: {MODEL_PATH}")
-                            
-                            # Load model (this happens only when making a prediction)
-                            model = load_model(MODEL_PATH, compile=False)
-                            
-                            # Reset file pointer for processing
-                            uploaded_file.seek(0)
-                            
-                            # Load and resize the image to match model's input shape (180x180)
-                            img = Image.open(uploaded_file).convert('RGB').resize((180, 180))
+                                # Load and resize the image to match model's input shape (180x180)
+                                img = Image.open(uploaded_file).convert('RGB').resize((180, 180))
 
-                            # Convert image to numpy array and normalize
-                            img_array = np.array(img) / 255.0
+                                # Convert image to numpy array and normalize
+                                img_array = np.array(img) / 255.0
 
-                            # Add batch dimension
-                            img_array = np.expand_dims(img_array, axis=0)  # Shape: (1, 180, 180, 3)
+                                # Add batch dimension
+                                img_array = np.expand_dims(img_array, axis=0)
 
-                            # Make prediction
-                            pred = model.predict(img_array, verbose=0)
-                            predicted_class = CLASS_NAMES[np.argmax(pred)]
-                            confidence = float(np.max(pred))
-                            confidence_score = confidence
+                                # Make prediction
+                                pred = model.predict(img_array, verbose=0)
+                                predicted_class = CLASS_NAMES[np.argmax(pred)]
+                                confidence = float(np.max(pred))
+                                confidence_score = confidence
 
-                            # Set prediction message with confidence
-                            prediction = f"Predicted: {predicted_class.title()}"
-                            
-                            print(f"Prediction successful: {predicted_class} ({confidence:.2%})")
-                            
-                        except Exception as e:
-                            error_message = f"Error during prediction: {str(e)}"
-                            print(f"Prediction error: {e}")
+                                # Set prediction message
+                                prediction = f"Predicted: {predicted_class.title()}"
+                                
+                                print(f"Prediction successful: {predicted_class} ({confidence:.2%})")
+                                
+                            except Exception as e:
+                                error_message = f"Error during prediction: {str(e)}"
+                                print(f"Prediction error: {e}")
                         
             except Exception as e:
                 error_message = f"Error processing request: {str(e)}"
                 print(f"Request processing error: {e}")
     else:
         form = UploadImageForm()
+    
+    # Check if model is loading for display
+    if model_loading:
+        is_loading = True
 
     # Prepare context
     context = {
@@ -122,29 +169,45 @@ def predict_flower(request):
         'image_url': image_url,
         'confidence_score': confidence_score,
         'confidence_percentage': f"{confidence_score:.1%}" if confidence_score else None,
+        'is_loading': is_loading,
+        'model_ready': model is not None,
     }
 
     return render(request, 'classifier/predict.html', context)
 
+def model_status(request):
+    """AJAX endpoint to check model loading status"""
+    global model, model_loading, model_error
+    
+    status = {
+        'loaded': model is not None,
+        'loading': model_loading,
+        'error': model_error,
+    }
+    
+    return JsonResponse(status)
+
 # Optional: API endpoint for predictions
 def api_predict(request):
     """API endpoint for programmatic access"""
+    global model, model_loading, model_error
+    
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST method allowed'}, status=405)
+    
+    if model_loading:
+        return JsonResponse({'error': 'Model is still loading, please try again'}, status=503)
+    
+    if model_error:
+        return JsonResponse({'error': f'Model loading failed: {model_error}'}, status=503)
+    
+    if model is None:
+        return JsonResponse({'error': 'Model not available'}, status=503)
     
     try:
         form = UploadImageForm(request.POST, request.FILES)
         if form.is_valid():
             uploaded_file = request.FILES['image']
-            
-            # Load model
-            from tensorflow.keras.models import load_model
-            MODEL_PATH = os.path.join(settings.BASE_DIR, 'classifier', 'flower_model (1).keras')
-            
-            if not os.path.exists(MODEL_PATH):
-                return JsonResponse({'error': 'Model file not found'}, status=503)
-            
-            model = load_model(MODEL_PATH, compile=False)
             
             # Process image
             img = Image.open(uploaded_file).convert('RGB').resize((180, 180))
