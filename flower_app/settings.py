@@ -27,7 +27,11 @@ DEBUG = True
 
 # ALLOWED_HOSTS =
 # ['flowers-app-ucwv.onrender.com']
-ALLOWED_HOSTS = ['flowers-app-ucwv.onrender.com']
+ALLOWED_HOSTS = [
+    'flowers-app-bqu4.onrender.com',
+    'localhost',
+    '127.0.0.1',
+]
 
 
 
