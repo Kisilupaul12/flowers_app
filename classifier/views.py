@@ -25,15 +25,15 @@ def load_model_safe():
         from tensorflow.keras.models import load_model
         
         # Use Django's BASE_DIR to get project root directory
-        MODEL_PATH = os.path.join(settings.BASE_DIR, 'classifier', 'flower_model(1).keras')
+        MODEL_PATH = os.path.join(settings.BASE_DIR, 'classifier', 'flower_model (1).keras')
         
         # Check if model file exists
         if not os.path.exists(MODEL_PATH):
             print(f"Model file not found at: {MODEL_PATH}")
             # Also check alternative locations as fallback
             fallback_locations = [
-                os.path.join(settings.BASE_DIR, 'flower_model(1).keras'),  # Project root
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flower_model(1).keras'),  # App directory
+                os.path.join(settings.BASE_DIR, 'flower_model (1).keras'),  # Project root
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flower_model (1).keras'),  # App directory
             ]
             
             for fallback_path in fallback_locations:
