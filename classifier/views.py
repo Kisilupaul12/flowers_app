@@ -24,13 +24,26 @@ def load_model_safe():
     try:
         from tensorflow.keras.models import load_model
         
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Fixed __file__ typo
-        MODEL_PATH = os.path.join(BASE_DIR, 'flower_model(1).keras')
+        # Use Django's BASE_DIR to get project root directory
+        MODEL_PATH = os.path.join(settings.BASE_DIR, 'classifier', 'flower_model(1).keras')
         
         # Check if model file exists
         if not os.path.exists(MODEL_PATH):
             print(f"Model file not found at: {MODEL_PATH}")
-            return None
+            # Also check alternative locations as fallback
+            fallback_locations = [
+                os.path.join(settings.BASE_DIR, 'flower_model(1).keras'),  # Project root
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flower_model(1).keras'),  # App directory
+            ]
+            
+            for fallback_path in fallback_locations:
+                if os.path.exists(fallback_path):
+                    MODEL_PATH = fallback_path
+                    print(f"Found model at fallback location: {MODEL_PATH}")
+                    break
+            else:
+                print(f"Model not found in any of the expected locations")
+                return None
         
         print(f"Loading model from: {MODEL_PATH}")
         
