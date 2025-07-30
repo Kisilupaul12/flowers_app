@@ -68,6 +68,9 @@ def load_model_in_background():
                 model = method()
                 print(f"Model loaded successfully with method {i}!")
                 
+                # Print model input shape for debugging
+                print(f"Model expects input shape: {model.input_shape}")
+                
                 # If loaded without compilation, compile it
                 if not hasattr(model, 'compiled_loss') or model.compiled_loss is None:
                     try:
@@ -107,6 +110,33 @@ def load_model_in_background():
         print(f"Final error: {model_error}")
     finally:
         model_loading = False
+
+def preprocess_image(uploaded_file):
+    """
+    Preprocess image to match model's expected input shape: (None, 180, 180, 3)
+    """
+    try:
+        # Open image and convert to RGB
+        img = Image.open(uploaded_file).convert('RGB')
+        
+        # Resize to exactly what the model expects: 180x180
+        img = img.resize((180, 180))
+        
+        # Convert to numpy array
+        img_array = np.array(img)
+        
+        # Normalize pixel values to [0, 1] (assuming model was trained this way)
+        img_array = img_array.astype(np.float32) / 255.0
+        
+        # Add batch dimension: (180, 180, 3) -> (1, 180, 180, 3)
+        img_array = np.expand_dims(img_array, axis=0)
+        
+        print(f"Preprocessed image shape: {img_array.shape}")
+        return img_array
+        
+    except Exception as e:
+        print(f"Error preprocessing image: {e}")
+        return None
 
 def save_uploaded_image(uploaded_file):
     """Save uploaded image and return the URL"""
@@ -173,60 +203,22 @@ def predict_flower(request):
                                 # Reset file pointer for processing
                                 uploaded_file.seek(0)
                                 
-                                # Load and resize the image to match model's expected input
-                                # Based on model config, input shape is 51200, which suggests flattened image
-                                # Let's try different image sizes to match 51200
+                                # Preprocess the image correctly
+                                img_array = preprocess_image(uploaded_file)
                                 
-                                # Try 160x160x3 = 76800 (too big)
-                                # Try 128x128x3 = 49152 (close to 51200)
-                                # Try 130x131x3 ≈ 51090 (very close)
-                                # Let's use a size that gives us exactly 51200 values
-                                
-                                img = Image.open(uploaded_file).convert('RGB')
-                                
-                                # Calculate size for 51200 pixels (assuming RGB)
-                                # 51200 / 3 = 17066.67, sqrt(17066.67) ≈ 130.6
-                                # Let's try 131x131 which gives 51483, close to 51200
-                                # Actually, let's try 128x125 = 48000, or 160x160 = 76800
-                                # The model might expect 180x160 or similar
-                                
-                                # Try the original approach first, then flatten
-                                img = img.resize((180, 180))
-                                img_array = np.array(img) / 255.0
-                                
-                                # Flatten the image to match model's expected input shape
-                                img_array = img_array.flatten()
-                                
-                                # If the flattened size doesn't match, resize accordingly
-                                if len(img_array) != 51200:
-                                    # Calculate the right dimensions for exactly 51200 pixels
-                                    target_pixels = int(51200 / 3)  # Divide by 3 for RGB
-                                    side_length = int(np.sqrt(target_pixels))
+                                if img_array is None:
+                                    error_message = "Failed to preprocess the image."
+                                else:
+                                    # Make prediction
+                                    pred = model.predict(img_array, verbose=0)
+                                    predicted_class = CLASS_NAMES[np.argmax(pred)]
+                                    confidence = float(np.max(pred))
+                                    confidence_score = confidence
+
+                                    # Set prediction message
+                                    prediction = f"Predicted: {predicted_class.title()}"
                                     
-                                    # Resize to get closer to target
-                                    img = Image.open(uploaded_file).convert('RGB').resize((side_length, side_length))
-                                    img_array = np.array(img) / 255.0
-                                    img_array = img_array.flatten()
-                                    
-                                    # If still not exact, pad or truncate
-                                    if len(img_array) > 51200:
-                                        img_array = img_array[:51200]
-                                    elif len(img_array) < 51200:
-                                        img_array = np.pad(img_array, (0, 51200 - len(img_array)), 'constant')
-
-                                # Add batch dimension
-                                img_array = np.expand_dims(img_array, axis=0)
-
-                                # Make prediction
-                                pred = model.predict(img_array, verbose=0)
-                                predicted_class = CLASS_NAMES[np.argmax(pred)]
-                                confidence = float(np.max(pred))
-                                confidence_score = confidence
-
-                                # Set prediction message
-                                prediction = f"Predicted: {predicted_class.title()}"
-                                
-                                print(f"Prediction successful: {predicted_class} ({confidence:.2%})")
+                                    print(f"Prediction successful: {predicted_class} ({confidence:.2%})")
                                 
                             except Exception as e:
                                 error_message = f"Error during prediction: {str(e)}"
@@ -290,24 +282,11 @@ def api_predict(request):
         if form.is_valid():
             uploaded_file = request.FILES['image']
             
-            # Process image to match model's expected input shape (51200 flattened pixels)
-            img = Image.open(uploaded_file).convert('RGB')
+            # Preprocess image correctly
+            img_array = preprocess_image(uploaded_file)
             
-            # Calculate dimensions that give us close to 51200 pixels
-            target_pixels = int(51200 / 3)  # Divide by 3 for RGB channels
-            side_length = int(np.sqrt(target_pixels))
-            
-            img = img.resize((side_length, side_length))
-            img_array = np.array(img) / 255.0
-            img_array = img_array.flatten()
-            
-            # Ensure exact size match
-            if len(img_array) > 51200:
-                img_array = img_array[:51200]
-            elif len(img_array) < 51200:
-                img_array = np.pad(img_array, (0, 51200 - len(img_array)), 'constant')
-            
-            img_array = np.expand_dims(img_array, axis=0)
+            if img_array is None:
+                return JsonResponse({'error': 'Failed to preprocess image'}, status=400)
             
             # Make prediction
             pred = model.predict(img_array, verbose=0)
