@@ -110,6 +110,40 @@ def load_model_in_background():
         print(f"Final error: {model_error}")
     finally:
         model_loading = False
+        # Add this to your views.py for testing
+
+def test_model(request):
+    """Test endpoint to verify model is working with correct input shape"""
+    global model, model_loading, model_error
+    
+    if model is None:
+        return JsonResponse({'error': 'Model not loaded'}, status=503)
+    
+    try:
+        # Create a dummy image with the correct shape (1, 180, 180, 3)
+        dummy_image = np.random.random((1, 180, 180, 3)).astype(np.float32)
+        
+        # Make prediction
+        prediction = model.predict(dummy_image, verbose=0)
+        predicted_class = CLASS_NAMES[np.argmax(prediction)]
+        confidence = float(np.max(prediction))
+        
+        return JsonResponse({
+            'status': 'success',
+            'model_input_shape': str(model.input_shape),
+            'test_input_shape': str(dummy_image.shape),
+            'prediction': predicted_class,
+            'confidence': confidence,
+            'message': 'Model is working correctly with proper input shape!'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e),
+            'model_input_shape': str(model.input_shape) if model else 'Model not loaded'
+        })
+        
 
 def preprocess_image(uploaded_file):
     """
